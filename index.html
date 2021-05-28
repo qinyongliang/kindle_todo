@@ -220,8 +220,8 @@
                                 }
                                 //按照重要程度排序
                                 if (a.importance == b.importance) {
-                                    //按照时间排序
-                                    return a.updateTime.localeCompare(b.updateTime)
+                                    //按照时间倒叙排序
+                                    return b.updateTime.localeCompare(a.updateTime)
                                 } else {
                                     //重要程度不相等
                                     return a.importance ? -1 : 1
@@ -235,6 +235,7 @@
             }
             update()
             setInterval(update, 30000)
+            
         },
 
         computed: {
