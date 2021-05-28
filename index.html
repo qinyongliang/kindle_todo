@@ -5,17 +5,19 @@
     <title>todo</title>
     <meta charset="UTF-8">
     <script src="https://unpkg.com/vue"></script>
-    <script type="text/javascript" src="https://alcdn.msauth.net/lib/1.4.4/js/msal.js"
-        integrity="sha384-fTmwCjhRA6zShZq8Ow5ZkbWwmgp8En46qW6yWpNEkp37MkV50I/V2wjzlEkQ8eWD"
-        crossorigin="anonymous"></script>
-    <style>
-        [v-cloak] {
-            display: none;
-        }
-    </style>
+    <script src="https://cdn.bootcdn.net/ajax/libs/babel-polyfill/7.12.1/polyfill.min.js"></script>
+    <!-- <script src="https://cdn.bootcdn.net/ajax/libs/bluebird/3.7.2/bluebird.min.js"></script> -->
+    <script src="https://alcdn.msauth.net/browser/2.14.2/js/msal-browser.min.js"></script>
 </head>
 
+
 <body>
+    <noscript>
+        <p>
+            需要启用javascript
+        </p>
+    </noscript>
+    <div class="log"></div>
     <div id="app">
         <div class="header_container">
             <div class="time_container">
@@ -27,7 +29,7 @@
             </div>
         </div>
         <section class="todoapp">
-            <section class="main" v-show="todos.length" v-cloak>
+            <section class="main" v-show="todos.length">
                 <ul class="todo-list">
                     <li v-for="todo in filteredTodos" class="todo" :key="todo.id"
                         :class="{ completed: todo.completed, editing: todo == editedTodo }">
@@ -37,7 +39,7 @@
                             <div @click="statusChange(todo)">
                                 <label v-bind:class="[todo.importance? 'importance': '']">{{todo.title }}
                                     <a v-show="todo.reminderTime" class="reminderTime">{{todo.reminderTime ?
-                                        dateFormat('mm-dd HH:MM',todo.reminderTime):''}}</a>
+                                        dateFormat(todo.reminderTime):''}}</a>
                                 </label>
 
                             </div>
@@ -69,51 +71,59 @@
     </div>
 </body>
 
-<script>
-    //登陆微软，获取todo数据
-    const myMSALObj = new Msal.UserAgentApplication({
-        auth: {
-            clientId: "6578922d-5ee4-4207-8f1b-0536ac97d029",
-            authority: "https://login.microsoftonline.com/consumers",
-            redirectUri: new URL(window.location.href).origin,
-        },
-        cache: {
-            cacheLocation: "localStorage", // This configures where your cache will be stored
-            storeAuthStateInCookie: false, // Set this to "true" if you are having issues on IE11 or Edge
-        }
-    });
-    const weekList = ['日', '一', '二', '三', '四', '五', '六']
-    const loginRequest = {
-        scopes: ["openid", "profile", "User.Read", "Mail.Read", "Tasks.ReadWrite"]
-    };
-    const tasksRestUrl = "https://graph.microsoft.com/v1.0/me/todo/lists/tasks/tasks"
+<script type="text/javascript">
+    try {
+        // document.querySelector(".log").innerHTML += msal
+        const weekList = ['日', '一', '二', '三', '四', '五', '六']
+        // //登陆微软，获取todo数据
+        const myMSALObj = new msal.PublicClientApplication({
+            auth: {
+                clientId: "6578922d-5ee4-4207-8f1b-0536ac97d029",
+                authority: "https://login.microsoftonline.com/consumers",
+                redirectUri: window.location.href.split("#")[0],
+            },
+            cache: {
+                cacheLocation: "localStorage", // This configures where your cache will be stored
+                storeAuthStateInCookie: false, // Set this to "true" if you are having issues on IE11 or Edge
+            }
+        });
+        var accountId = localStorage["accountId"]
+        myMSALObj.handleRedirectPromise().then(function (resp) {
+            console.log(resp)
+            if (resp != null) {
+                accountId = resp.account.homeAccountId;
+                localStorage["accountId"] = accountId
+            } else {
+                const currentAccounts = myMSALObj.getAllAccounts();
+                if (!currentAccounts || currentAccounts.length < 1) {
+                    return;
+                } else if (currentAccounts.length >= 1) {
+                    accountId = currentAccounts[0].homeAccountId;
+                    localStorage["accountId"] = accountId
+                }
+            }
+        }).catch(function (error) { document.querySelector(".log").innerHTML += "\n" + error + "\n" })
 
-    //直接尝试全屏显示
-//     var element = document.documentElement;
-//     if (element.requestFullscreen) {
-//         element.requestFullscreen();
-//     } else if (element.msRequestFullscreen) {
-//         element.msRequestFullscreen();
-//     } else if (element.mozRequestFullScreen) {
-//         element.mozRequestFullScreen();
-//     } else if (element.webkitRequestFullscreen) {
-//         element.webkitRequestFullscreen();
-//     }
-
-    async function call(method, url, params) {
-        doCall = function () {
-            return new Promise((resolve, reject) => {
+        // document.querySelector(".log").innerHTML += myMSALObj
+        const loginRequest = {
+            scopes: ["openid", "profile", "User.Read", "Mail.Read", "Tasks.ReadWrite"]
+        };
+        const tasksRestUrl = "https://graph.microsoft.com/v1.0/me/todo/lists/tasks/tasks"
+        myMSALObj.loginRedirect(loginRequest)
+        function call(method, url, params, callback) {
+            doCall = function (currentAcc) {
+                loginRequest.account = currentAcc;
                 myMSALObj.acquireTokenSilent(loginRequest)
-                    .catch(error => {
+                    .catch(function (error) {
                         return myMSALObj.acquireTokenPopup(loginRequest)
-                            .then(tokenResponse => {
+                            .then(function (tokenResponse) {
                                 return tokenResponse;
-                            }).catch(error => {
+                            }).catch(function (error) {
                                 console.log(error);
                             });
-                    }).then(response => {
+                    }).then(function (response) {
                         const headers = new Headers();
-                        headers.append("Authorization", `Bearer ${response.accessToken}`);
+                        headers.append("Authorization", "Bearer " + response.accessToken);
                         const options = {
                             method: method,
                             headers: headers,
@@ -124,78 +134,113 @@
                         }
                         console.log('request made to Graph API at: ' + new Date().toString());
                         fetch(url, options)
-                            .then(response => {
-                                if (response.status != 204) {
-                                    resolve(response.json())
+                            .then(function (response) {
+                                if (response.status != 204 && callback) {
+                                    response.json().then(function (json) {
+                                        callback(json)
+                                    })
                                 }
-                            }).catch(error => reject(error))
+                            }).catch(function (error) { document.querySelector(".log").innerHTML += "\n" + error + "\n" })
                     })
-            })
-        }
-        if (!myMSALObj.getAccount()) {
-            //登陆
-            myMSALObj.loginPopup(loginRequest).then(function () {
-                return doCall();
-            })
-        } else {
-            return doCall()
-        }
-    }
-
-    // visibility filters
-    var filters = {
-        all: function (todos) {
-            return todos;
-        },
-        importance: function (todos) {
-            return todos.filter(function (todo) {
-                return todo.importance;
-            });
-        },
-        active: function (todos) {
-            return todos.filter(function (todo) {
-                return !todo.completed;
-            });
-        },
-        completed: function (todos) {
-            return todos.filter(function (todo) {
-                return todo.completed;
-            });
-        }
-    };
-
-
-    // app Vue instance
-    var app = new Vue({
-        // app initial state
-        data: {
-            todos: [],
-            newTodo: "",
-            editedTodo: null,
-            visibility: "all",
-            time: '',
-            month: '',
-            week: ''
-        },
-
-        mounted: function () {
-            //时间更新
-            updateTime = () => {
-                var date = new Date()
-                var utc8DiffMinutes = date.getTimezoneOffset() + 480
-                date.setMinutes(date.getMinutes() + utc8DiffMinutes)
-                this.time = date.getHours() + ':' + ('0' + date.getMinutes()).slice(-2)
-                this.month = (date.getMonth() + 1) + '月' + date.getDate() + '日'
-                this.week = '星期' + weekList[date.getDay()]
             }
-            updateTime()
-            setInterval(updateTime, 60 * 1000)
+            onLogined = function () {
+                const currentAcc = myMSALObj.getAccountByHomeId(accountId);
+                if (!currentAcc) {
+                    //登陆
+                    return myMSALObj.loginRedirect(loginRequest).then(function () {
+                        return doCall(currentAcc);
+                    })
+                } else {
+                    return doCall(currentAcc)
+                }
+            }
+            if (!accountId) {
+                myMSALObj.loginRedirect(loginRequest).then(function () {
+                    onLogined();
+                })
+            }
+            onLogined()
 
-            //todo 列表更新
-            update = () => {
-                call("GET", `${tasksRestUrl}?$orderby=lastModifiedDateTime%20desc&$top=100`)
-                    .then(res => {
-                        this.todos = res.value.map(v => {
+        }
+
+        // visibility filters
+        var filters = {
+            all: function (todos) {
+                return todos;
+            },
+            importance: function (todos) {
+                return todos.filter(function (todo) {
+                    return todo.importance;
+                });
+            },
+            active: function (todos) {
+                return todos.filter(function (todo) {
+                    return !todo.completed;
+                });
+            },
+            completed: function (todos) {
+                return todos.filter(function (todo) {
+                    return todo.completed;
+                });
+            }
+        };
+
+
+        // app Vue instance
+        var app = new Vue({
+            // app initial state
+            data: {
+                todos: [],
+                newTodo: "",
+                editedTodo: null,
+                visibility: "all",
+                time: '10:00',
+                month: '1月1日',
+                week: '周一'
+            },
+
+
+            mounted: function () {
+                this.updateTime()
+                this.updateTodo()
+                setInterval(this.updateTodo, 30000)
+            },
+
+            computed: {
+                filteredTodos: function () {
+                    return filters[this.visibility](this.todos);
+                },
+                remaining: function () {
+                    return filters.active(this.todos).length;
+                }
+            },
+
+            methods: {
+                removeTodo: function (todo) {
+                    this.todos.splice(this.todos.indexOf(todo), 1);
+                    call("DELETE", tasksRestUrl + todo.id)
+                },
+
+                statusChange: function (todo) {
+                    todo.completed = !todo.completed;
+                    call("PATCH", tasksRestUrl + "/" + todo.id, {
+                        status: todo.completed ? "completed" : "notStarted"
+                    })
+                },
+                updateTime: function () {
+                    var date = new Date()
+                    var utc8DiffMinutes = date.getTimezoneOffset() + 480
+                    date.setMinutes(date.getMinutes() + utc8DiffMinutes)
+                    this.time = date.getHours() + ':' + ('0' + date.getMinutes()).slice(-2)
+                    this.month = (date.getMonth() + 1) + '月' + date.getDate() + '日'
+                    this.week = '星期' + weekList[date.getDay()]
+                    setTimeout(this.updateTime, (60 - date.getSeconds()) * 1000);
+                },
+                updateTodo: function () {
+                    var _this = this
+                    call("GET", tasksRestUrl + "?$orderby=lastModifiedDateTime%20desc&$top=100", null, function (res) {
+                        console.log(res)
+                        _this.todos = res.value.map(function (v) {
                             return {
                                 id: v.id,
                                 title: v.title,
@@ -204,7 +249,7 @@
                                 updateTime: v.lastModifiedDateTime,
                                 reminderTime: v.reminderDateTime ? new Date(new Date(v.reminderDateTime.dateTime).getTime() + 8 * 60 * 60 * 1000) : null
                             }
-                        }).sort((a, b) => {
+                        }).sort(function (a, b) {
                             //按照：是否完成 > 是否提醒(提醒时间) > 重要程度 > 时间 来排序
                             if (a.completed == b.completed) {
                                 if (a.reminderTime && b.reminderTime) {
@@ -230,75 +275,35 @@
                                 return a.completed ? 1 : -1
                             }
                         })
-                        console.log(this.todos)
+                        console.log(_this.todos)
                     })
+                },
+                dateFormat: function (date) {
+                    return "" + (date.getMonth() + 1).toString() + "-" + date.getDate().toString() + " " + date.getHours().toString() + ":" + date.getMinutes().toString();
+                }
             }
-            update()
-            setInterval(update, 30000)
-            
-        },
+        });
 
-        computed: {
-            filteredTodos: function () {
-                return filters[this.visibility](this.todos);
-            },
-            remaining: function () {
-                return filters.active(this.todos).length;
+        // // handle routing
+        function onHashChange() {
+            var visibility = window.location.hash.replace(/#\/?/, "");
+            if (filters[visibility]) {
+                app.visibility = visibility;
+            } else {
+                window.location.hash = "";
+                app.visibility = "all";
             }
-        },
-
-        methods: {
-            removeTodo: function (todo) {
-                this.todos.splice(this.todos.indexOf(todo), 1);
-                call("DELETE", `${tasksRestUrl}/${todo.id}`)
-            },
-
-            statusChange: function (todo) {
-                todo.completed = !todo.completed;
-                call("PATCH", `${tasksRestUrl}/${todo.id}`, {
-                    status: todo.completed ? "completed" : "notStarted"
-                })
-            },
-            dateFormat: function (fmt, date) {
-                let ret;
-                const opt = {
-                    "Y+": date.getFullYear().toString(),        // 年
-                    "m+": (date.getMonth() + 1).toString(),     // 月
-                    "d+": date.getDate().toString(),            // 日
-                    "H+": date.getHours().toString(),           // 时
-                    "M+": date.getMinutes().toString(),         // 分
-                    "S+": date.getSeconds().toString()          // 秒
-                    // 有其他格式化字符需求可以继续添加，必须转化成字符串
-                };
-                for (let k in opt) {
-                    ret = new RegExp("(" + k + ")").exec(fmt);
-                    if (ret) {
-                        fmt = fmt.replace(ret[1], (ret[1].length == 1) ? (opt[k]) : (opt[k].padStart(ret[1].length, "0")))
-                    };
-                };
-                return fmt;
-            }
-
         }
-    });
 
-    // handle routing
-    function onHashChange() {
-        var visibility = window.location.hash.replace(/#\/?/, "");
-        if (filters[visibility]) {
-            app.visibility = visibility;
-        } else {
-            window.location.hash = "";
-            app.visibility = "all";
-        }
+        window.addEventListener("hashchange", onHashChange);
+        onHashChange();
+
+        // mount
+        app.$mount("#app");
+        // app.$mount(".todoapp")
+    } catch (e) {
+        document.querySelector(".log").innerHTML += e
     }
-
-    window.addEventListener("hashchange", onHashChange);
-    onHashChange();
-
-    // mount
-    app.$mount("#app");
-    // app.$mount(".todoapp")
 </script>
 
 <style>
@@ -314,14 +319,22 @@
     }
 
     .time_container .time {
-        font-size: 80px;
+        font-size: 100px;
         font-weight: 600;
     }
 
     .date_container {
         margin: 40px;
-        font-size: larger;
-        font-weight: 400;
+        font-size: 35px;
+        font-weight: 300;
+    }
+
+    .date_container .month {
+        margin: 40px;
+    }
+
+    .date_container .week {
+        margin: 40px;
     }
 
     button {
