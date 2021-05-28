@@ -17,13 +17,13 @@
 
 <body>
     <div id="app">
-        <div id="head_container">
+        <div class="header_container">
             <div class="time_container">
-                <div class="time" id="time">{{time}}</div>
+                <div class="time">{{time}}</div>
             </div>
             <div class="date_container">
-                <div class="date" id="month">{{month}}</div>
-                <div class="date" id="week">{{week}}</div>
+                <div class="month">{{month}}</div>
+                <div class="week">{{week}}</div>
             </div>
         </div>
         <section class="todoapp">
@@ -295,6 +295,22 @@
         padding: 0;
     }
 
+    .header_container {
+        margin: 30px;
+        text-align: center;
+    }
+
+    .time_container .time {
+        font-size: 80px;
+        font-weight: 600;
+    }
+
+    .date_container {
+        margin: 40px;
+        font-size: larger;
+        font-weight: 400;
+    }
+
     button {
         margin: 0;
         padding: 0;
@@ -334,7 +350,7 @@
 
     .todoapp {
         background: #fff;
-        margin: 40px 0 40px 0;
+        margin: 20px 0 20px 0;
         position: relative;
         box-shadow: 0 2px 4px 0 rgba(0, 0, 0, 0.2),
             0 25px 50px 0 rgba(0, 0, 0, 0.1);
