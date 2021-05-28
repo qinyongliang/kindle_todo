@@ -88,6 +88,18 @@
     };
     const tasksRestUrl = "https://graph.microsoft.com/v1.0/me/todo/lists/tasks/tasks"
 
+    //直接尝试全屏显示
+    var element = document.documentElement;
+    if (element.requestFullscreen) {
+        element.requestFullscreen();
+    } else if (element.msRequestFullscreen) {
+        element.msRequestFullscreen();
+    } else if (element.mozRequestFullScreen) {
+        element.mozRequestFullScreen();
+    } else if (element.webkitRequestFullscreen) {
+        element.webkitRequestFullscreen();
+    }
+
     async function call(method, url, params) {
         doCall = function () {
             return new Promise((resolve, reject) => {
