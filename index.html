@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>todo</title>
+    <meta charset="UTF-8">
+    <script src="https://unpkg.com/vue"></script>
+    <script type="text/javascript" src="https://alcdn.msauth.net/lib/1.4.4/js/msal.js"
+        integrity="sha384-fTmwCjhRA6zShZq8Ow5ZkbWwmgp8En46qW6yWpNEkp37MkV50I/V2wjzlEkQ8eWD"
+        crossorigin="anonymous"></script>
+    <style>
+        [v-cloak] {
+            display: none;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="app">
+        <div id="head_container">
+            <div class="time_container">
+                <div class="time" id="time">{{time}}</div>
+            </div>
+            <div class="date_container">
+                <div class="date" id="month">{{month}}</div>
+                <div class="date" id="week">{{week}}</div>
+            </div>
+        </div>
+        <section class="todoapp">
+            <section class="main" v-show="todos.length" v-cloak>
+                <ul class="todo-list">
+                    <li v-for="todo in filteredTodos" class="todo" :key="todo.id"
+                        :class="{ completed: todo.completed, editing: todo == editedTodo }">
+                        <div class="view">
+                            <input class="toggle" type="checkbox" v-model="todo.completed"
+                                @click="statusChange(todo)" />
+                            <div @click="statusChange(todo)">
+                                <label v-bind:class="[todo.importance? 'importance': '']">{{todo.title }}
+                                    <a v-show="todo.reminderTime" class="reminderTime">{{todo.reminderTime ?
+                                        dateFormat('mm-dd HH:MM',todo.reminderTime):''}}</a>
+                                </label>
+
+                            </div>
+                            <button class="destroy" @click="removeTodo(todo)"></button>
+                        </div>
+                    </li>
+                </ul>
+            </section>
+            <footer class="footer" v-cloak>
+                <span class="todo-count">
+                    <strong>剩余: {{ remaining }}</strong>
+                </span>
+                <ul class="filters">
+                    <li>
+                        <a href="#/all" :class="{ selected: visibility == 'all' }">所有</a>
+                    </li>
+                    <li>
+                        <a href="#/importance" :class="{ selected: visibility == 'importance' }">重要</a>
+                    </li>
+                    <li>
+                        <a href="#/active" :class="{ selected: visibility == 'active' }">未完成</a>
+                    </li>
+                    <li>
+                        <a href="#/completed" :class="{ selected: visibility == 'completed' }">已完成</a>
+                    </li>
+                </ul>
+            </footer>
+        </section>
+    </div>
+</body>
+
+<script>
+    //登陆微软，获取todo数据
+    const myMSALObj = new Msal.UserAgentApplication({
+        auth: {
+            clientId: "6578922d-5ee4-4207-8f1b-0536ac97d029",
+            authority: "https://login.microsoftonline.com/consumers",
+            redirectUri: new URL(window.location.href).origin,
+        },
+        cache: {
+            cacheLocation: "localStorage", // This configures where your cache will be stored
+            storeAuthStateInCookie: false, // Set this to "true" if you are having issues on IE11 or Edge
+        }
+    });
+    const weekList = ['日', '一', '二', '三', '四', '五', '六']
+    const loginRequest = {
+        scopes: ["openid", "profile", "User.Read", "Mail.Read", "Tasks.ReadWrite"]
+    };
+    const tasksRestUrl = "https://graph.microsoft.com/v1.0/me/todo/lists/AQMkADAwATY3ZmYAZS1lNjU0LTFlNzMtMDACLTAwCgAuAAADpEEPb0IxrE_2zpmpUMb8YgEAUeLe80MdWky8tlD5ZdVe4wAEo3EiOwAAAA==/tasks"
+
+    async function call(method, url, params) {
+        doCall = function () {
+            return new Promise((resolve, reject) => {
+                myMSALObj.acquireTokenSilent(loginRequest)
+                    .catch(error => {
+                        return myMSALObj.acquireTokenPopup(loginRequest)
+                            .then(tokenResponse => {
+                                return tokenResponse;
+                            }).catch(error => {
+                                console.log(error);
+                            });
+                    }).then(response => {
+                        const headers = new Headers();
+                        headers.append("Authorization", `Bearer ${response.accessToken}`);
+                        const options = {
+                            method: method,
+                            headers: headers,
+                        };
+                        if (params) {
+                            options.headers.append('Content-Type', 'application/json')
+                            options.body = JSON.stringify(params);
+                        }
+                        console.log('request made to Graph API at: ' + new Date().toString());
+                        fetch(url, options)
+                            .then(response => {
+                                if (response.status != 204) {
+                                    resolve(response.json())
+                                }
+                            }).catch(error => reject(error))
+                    })
+            })
+        }
+        if (!myMSALObj.getAccount()) {
+            //登陆
+            myMSALObj.loginPopup(loginRequest).then(function () {
+                return doCall();
+            })
+        } else {
+            return doCall()
+        }
+    }
+
+    // visibility filters
+    var filters = {
+        all: function (todos) {
+            return todos;
+        },
+        importance: function (todos) {
+            return todos.filter(function (todo) {
+                return todo.importance;
+            });
+        },
+        active: function (todos) {
+            return todos.filter(function (todo) {
+                return !todo.completed;
+            });
+        },
+        completed: function (todos) {
+            return todos.filter(function (todo) {
+                return todo.completed;
+            });
+        }
+    };
+
+
+    // app Vue instance
+    var app = new Vue({
+        // app initial state
+        data: {
+            todos: [],
+            newTodo: "",
+            editedTodo: null,
+            visibility: "all",
+            time: '',
+            month: '',
+            week: ''
+        },
+
+        mounted: function () {
+            //时间更新
+            updateTime = () => {
+                var date = new Date()
+                var utc8DiffMinutes = date.getTimezoneOffset() + 480
+                date.setMinutes(date.getMinutes() + utc8DiffMinutes)
+                this.time = date.getHours() + ':' + ('0' + date.getMinutes()).slice(-2)
+                this.month = (date.getMonth() + 1) + '月' + date.getDate() + '日'
+                this.week = '星期' + weekList[date.getDay()]
+            }
+            updateTime()
+            setInterval(updateTime, 60 * 1000)
+
+            //todo 列表更新
+            update = () => {
+                call("GET", `${tasksRestUrl}?$orderby=lastModifiedDateTime%20desc&$top=100`)
+                    .then(res => {
+                        this.todos = res.value.map(v => {
+                            return {
+                                id: v.id,
+                                title: v.title,
+                                importance: v.importance == "high",
+                                completed: v.status == "completed",
+                                updateTime: v.lastModifiedDateTime,
+                                reminderTime: v.reminderDateTime ? new Date(new Date(v.reminderDateTime.dateTime).getTime() + 8 * 60 * 60 * 1000) : null
+                            }
+                        }).sort((a, b) => {
+                            //按照：是否完成 > 是否提醒(提醒时间) > 重要程度 > 时间 来排序
+                            if (a.completed == b.completed) {
+                                if (a.reminderTime && b.reminderTime) {
+                                    return a.reminderTime - b.reminderTime
+                                }
+                                //只要有一个设置了提醒，那么提醒在最前。否者走其他排序方式
+                                if (a.reminderTime || b.reminderTime) {
+                                    if (a.reminderTime) {
+                                        return -1
+                                    } else {
+                                        return 1
+                                    }
+                                }
+                                //按照重要程度排序
+                                if (a.importance == b.importance) {
+                                    //按照时间排序
+                                    return a.updateTime.localeCompare(b.updateTime)
+                                } else {
+                                    //重要程度不相等
+                                    return a.importance ? -1 : 1
+                                }
+                            } else {
+                                return a.completed ? 1 : -1
+                            }
+                        })
+                        console.log(this.todos)
+                    })
+            }
+            update()
+            setInterval(update, 30000)
+        },
+
+        computed: {
+            filteredTodos: function () {
+                return filters[this.visibility](this.todos);
+            },
+            remaining: function () {
+                return filters.active(this.todos).length;
+            }
+        },
+
+        methods: {
+            removeTodo: function (todo) {
+                this.todos.splice(this.todos.indexOf(todo), 1);
+                call("DELETE", `${tasksRestUrl}/${todo.id}`)
+            },
+
+            statusChange: function (todo) {
+                todo.completed = !todo.completed;
+                call("PATCH", `${tasksRestUrl}/${todo.id}`, {
+                    status: todo.completed ? "completed" : "notStarted"
+                })
+            },
+            dateFormat: function (fmt, date) {
+                let ret;
+                const opt = {
+                    "Y+": date.getFullYear().toString(),        // 年
+                    "m+": (date.getMonth() + 1).toString(),     // 月
+                    "d+": date.getDate().toString(),            // 日
+                    "H+": date.getHours().toString(),           // 时
+                    "M+": date.getMinutes().toString(),         // 分
+                    "S+": date.getSeconds().toString()          // 秒
+                    // 有其他格式化字符需求可以继续添加，必须转化成字符串
+                };
+                for (let k in opt) {
+                    ret = new RegExp("(" + k + ")").exec(fmt);
+                    if (ret) {
+                        fmt = fmt.replace(ret[1], (ret[1].length == 1) ? (opt[k]) : (opt[k].padStart(ret[1].length, "0")))
+                    };
+                };
+                return fmt;
+            }
+
+        }
+    });
+
+    // handle routing
+    function onHashChange() {
+        var visibility = window.location.hash.replace(/#\/?/, "");
+        if (filters[visibility]) {
+            app.visibility = visibility;
+        } else {
+            window.location.hash = "";
+            app.visibility = "all";
+        }
+    }
+
+    window.addEventListener("hashchange", onHashChange);
+    onHashChange();
+
+    // mount
+    app.$mount("#app");
+    // app.$mount(".todoapp")
+</script>
+
+<style>
+    html,
+    body {
+        margin: 0;
+        padding: 0;
+    }
+
+    button {
+        margin: 0;
+        padding: 0;
+        border: 0;
+        background: none;
+        font-size: 100%;
+        vertical-align: baseline;
+        font-family: inherit;
+        font-weight: inherit;
+        color: inherit;
+        -webkit-appearance: none;
+        appearance: none;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+    }
+
+    body {
+        font: 14px 'Helvetica Neue', Helvetica, Arial, sans-serif;
+        line-height: 1.4em;
+        background: #f5f5f5;
+        color: #4d4d4d;
+        min-width: 230px;
+        max-width: 550px;
+        margin: 0 auto;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+        font-weight: 300;
+    }
+
+    :focus {
+        outline: 0;
+    }
+
+    .hidden {
+        display: none;
+    }
+
+    .todoapp {
+        background: #fff;
+        margin: 40px 0 40px 0;
+        position: relative;
+        box-shadow: 0 2px 4px 0 rgba(0, 0, 0, 0.2),
+            0 25px 50px 0 rgba(0, 0, 0, 0.1);
+    }
+
+    .main {
+        position: relative;
+        z-index: 2;
+        border-top: 1px solid #e6e6e6;
+        max-height: 300px;
+        overflow: scroll;
+    }
+
+    .todo-list {
+        margin: 0;
+        padding: 0;
+        list-style: none;
+    }
+
+    .todo-list li {
+        position: relative;
+        font-size: 24px;
+        border-bottom: 1px solid #ededed;
+    }
+
+    .todo-list li:last-child {
+        border-bottom: none;
+    }
+
+    .todo-list li .toggle {
+        text-align: center;
+        width: 40px;
+        /* auto, since non-WebKit browsers doesn't support input styling */
+        height: auto;
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        margin: auto 0;
+        border: none;
+        /* Mobile Safari */
+        -webkit-appearance: none;
+        appearance: none;
+    }
+
+    .toggle {
+        background-image: url('data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20width%3D%2240%22%20height%3D%2240%22%20viewBox%3D%22-10%20-18%20100%20135%22%3E%3Ccircle%20cx%3D%2250%22%20cy%3D%2250%22%20r%3D%2250%22%20fill%3D%22none%22%20stroke%3D%22%23ededed%22%20stroke-width%3D%223%22/%3E%3C/svg%3E');
+        background-repeat: no-repeat;
+        background-position: center left;
+    }
+
+    .toggle:checked {
+        background-image: url('data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20width%3D%2240%22%20height%3D%2240%22%20viewBox%3D%22-10%20-18%20100%20135%22%3E%3Ccircle%20cx%3D%2250%22%20cy%3D%2250%22%20r%3D%2250%22%20fill%3D%22none%22%20stroke%3D%22%23bddad5%22%20stroke-width%3D%223%22/%3E%3Cpath%20fill%3D%22%235dc2af%22%20d%3D%22M72%2025L42%2071%2027%2056l-4%204%2020%2020%2034-52z%22/%3E%3C/svg%3E');
+    }
+
+    .todo-list li label {
+        word-break: break-all;
+        padding: 15px 15px 15px 60px;
+        display: block;
+        line-height: 1.2;
+        transition: color 0.4s;
+        display: flex;
+        align-content: "center";
+    }
+
+    .todo-list .importance {
+        font-weight: 900
+    }
+
+    .todo-list li.completed label {
+        color: #d9d9d9;
+        text-decoration: line-through;
+    }
+
+    .todo-list li .destroy {
+        display: none;
+        position: absolute;
+        top: 0;
+        right: 10px;
+        bottom: 0;
+        width: 40px;
+        height: 40px;
+        margin: auto 0;
+        font-size: 30px;
+        color: #cc9a9a;
+        margin-bottom: 11px;
+        transition: color 0.2s ease-out;
+    }
+
+    .todo-list li .destroy:hover {
+        color: #af5b5e;
+    }
+
+    .todo-list li .destroy:after {
+        content: '×';
+    }
+
+    .todo-list li .destroy {
+        display: block;
+    }
+
+    .todo-list .reminderTime {
+        color: inherit;
+        margin: 3px;
+        padding: 3px 7px;
+        margin-right: 40px;
+        min-width: 65px;
+        white-space: nowrap;
+        text-decoration: none;
+        border: 1px solid;
+        border-radius: 12px;
+        font-size: 10px;
+        border-color: rgba(175, 47, 47, 0.2);
+    }
+
+    .footer {
+        color: #777;
+        padding: 10px 15px;
+        height: 20px;
+        text-align: center;
+        border-top: 1px solid #e6e6e6;
+    }
+
+    .footer:before {
+        content: '';
+        position: absolute;
+        right: 0;
+        bottom: 0;
+        left: 0;
+        height: 50px;
+        overflow: hidden;
+        box-shadow: 0 1px 1px rgba(0, 0, 0, 0.2),
+            0 8px 0 -3px #f6f6f6,
+    }
+
+    .todo-count {
+        float: left;
+        text-align: left;
+    }
+
+    .todo-count strong {
+        font-weight: 300;
+    }
+
+    .filters {
+        margin: 0;
+        padding: 0;
+        list-style: none;
+        position: absolute;
+        right: 0;
+        left: 0;
+    }
+
+    .filters li {
+        display: inline;
+    }
+
+    .filters li a {
+        color: inherit;
+        margin: 3px;
+        padding: 3px 7px;
+        text-decoration: none;
+        border: 1px solid transparent;
+        border-radius: 3px;
+    }
+
+    .filters li a:hover {
+        border-color: rgba(175, 47, 47, 0.1);
+    }
+
+    .filters li a.selected {
+        border-color: rgba(175, 47, 47, 0.2);
+    }
+
+    @media (max-width: 430px) {
+        .footer {
+            height: 50px;
+        }
+
+        .filters {
+            bottom: 10px;
+        }
+    }
+</style>
+
+</html>
