@@ -86,7 +86,7 @@
     const loginRequest = {
         scopes: ["openid", "profile", "User.Read", "Mail.Read", "Tasks.ReadWrite"]
     };
-    const tasksRestUrl = "https://graph.microsoft.com/v1.0/me/todo/lists/AQMkADAwATY3ZmYAZS1lNjU0LTFlNzMtMDACLTAwCgAuAAADpEEPb0IxrE_2zpmpUMb8YgEAUeLe80MdWky8tlD5ZdVe4wAEo3EiOwAAAA==/tasks"
+    const tasksRestUrl = "https://graph.microsoft.com/v1.0/me/todo/lists/tasks/tasks"
 
     async function call(method, url, params) {
         doCall = function () {
