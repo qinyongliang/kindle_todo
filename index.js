@@ -4,7 +4,7 @@ import * as msal from '@azure/msal-node'
 import { v4 as uuid } from "uuid"
 
 const CookiesName = "_todo";
-const HOST = "https://todo.cn.utools.club";
+const HOST = "https://todo.mscdn.cf";
 const REDIRECT_URI = HOST + "/redirect";
 const pca = new msal.ConfidentialClientApplication({
   auth: {
@@ -40,7 +40,13 @@ router.get("/", async (req) => {
   //获取cookies,看是否登陆
   if (getCookie(req, CookiesName)) {
     // return fetch("https://todo.mscdn.cf")
-    return fetch("https://list.cn.utools.club/")
+    var res = await fetch("https://cdn.jsdelivr.net/gh/qinyongliang/kindle_todo/index.html");
+    return new Response(await res.text(), {
+      status: 200,
+      headers: {
+        'content-type': 'text/html; charset=utf-8'
+      }
+    })
   } else {
     const authCodeUrlParameters = {
       scopes: ["openid", "profile", "User.Read", "Mail.Read", "Tasks.ReadWrite"],
@@ -53,22 +59,24 @@ router.get("/", async (req) => {
 })
 
 router.get("/redirect", async (req) => {
-  const tokenRequest = {
-    code: req.query.code,
-    scopes: ["openid", "profile", "User.Read", "Mail.Read", "Tasks.ReadWrite"],
-    // redirectUri: new URL(req.url).origin + "/redirect",
-    redirectUri: REDIRECT_URI,
-  };
-  let res = await pca.acquireTokenByCode(tokenRequest)
-  let id = uuid()
-  return new Response(null, {
-    status: 302,
-    headers: {
-      'Location': HOST + "/",
-      //先暂时存在浏览器中
-      'Set-Cookie': `${CookiesName}=${res.accessToken}; expires=${res.expiresOn.toUTCString()}; path=/; HttpOnly`
-    }
-  });
+  try {
+    let res = await pca.acquireTokenByCode({
+      code: req.query.code,
+      scopes: ["openid", "profile", "User.Read", "Mail.Read", "Tasks.ReadWrite"],
+      // redirectUri: new URL(req.url).origin + "/redirect",
+      redirectUri: REDIRECT_URI,
+    })
+    return new Response(null, {
+      status: 302,
+      headers: {
+        'Location': HOST + "/",
+        //先暂时存在浏览器中
+        'Set-Cookie': `${CookiesName}=${res.accessToken}; expires=${res.expiresOn.toUTCString()}; path=/; HttpOnly`
+      }
+    });
+  } catch (error) {
+    return new Response(error)
+  }
 })
 
 
