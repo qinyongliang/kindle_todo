@@ -1,0 +1,7 @@
+name = "todo"
+type = "webpack"
+
+account_id = "cabc14b5299a96b989abf0ca6e1c94f6"
+workers_dev = true
+route = ""
+zone_id = "cabc14b5299a96b989abf0ca6e1c94f6"
