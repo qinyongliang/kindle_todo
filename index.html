@@ -6,8 +6,6 @@
     <meta charset="UTF-8">
     <script src="https://unpkg.com/vue"></script>
     <script src="https://cdn.bootcdn.net/ajax/libs/babel-polyfill/7.12.1/polyfill.min.js"></script>
-    <!-- <script src="https://cdn.bootcdn.net/ajax/libs/bluebird/3.7.2/bluebird.min.js"></script> -->
-    <script src="https://alcdn.msauth.net/browser/2.14.2/js/msal-browser.min.js"></script>
 </head>
 
 
@@ -75,94 +73,7 @@
     try {
         // document.querySelector(".log").innerHTML += msal
         const weekList = ['日', '一', '二', '三', '四', '五', '六']
-        // //登陆微软，获取todo数据
-        const myMSALObj = new msal.PublicClientApplication({
-            auth: {
-                clientId: "6578922d-5ee4-4207-8f1b-0536ac97d029",
-                authority: "https://login.microsoftonline.com/consumers",
-                redirectUri: window.location.href.split("#")[0],
-            },
-            cache: {
-                cacheLocation: "localStorage", // This configures where your cache will be stored
-                storeAuthStateInCookie: false, // Set this to "true" if you are having issues on IE11 or Edge
-            }
-        });
-        var accountId = localStorage["accountId"]
-        myMSALObj.handleRedirectPromise().then(function (resp) {
-            console.log(resp)
-            if (resp != null) {
-                accountId = resp.account.homeAccountId;
-                localStorage["accountId"] = accountId
-            } else {
-                const currentAccounts = myMSALObj.getAllAccounts();
-                if (!currentAccounts || currentAccounts.length < 1) {
-                    return;
-                } else if (currentAccounts.length >= 1) {
-                    accountId = currentAccounts[0].homeAccountId;
-                    localStorage["accountId"] = accountId
-                }
-            }
-        }).catch(function (error) { document.querySelector(".log").innerHTML += "\n" + error + "\n" })
-
-        // document.querySelector(".log").innerHTML += myMSALObj
-        const loginRequest = {
-            scopes: ["openid", "profile", "User.Read", "Mail.Read", "Tasks.ReadWrite"]
-        };
-        const tasksRestUrl = "https://graph.microsoft.com/v1.0/me/todo/lists/tasks/tasks"
-        myMSALObj.loginRedirect(loginRequest)
-        function call(method, url, params, callback) {
-            doCall = function (currentAcc) {
-                loginRequest.account = currentAcc;
-                myMSALObj.acquireTokenSilent(loginRequest)
-                    .catch(function (error) {
-                        return myMSALObj.acquireTokenPopup(loginRequest)
-                            .then(function (tokenResponse) {
-                                return tokenResponse;
-                            }).catch(function (error) {
-                                console.log(error);
-                            });
-                    }).then(function (response) {
-                        const headers = new Headers();
-                        headers.append("Authorization", "Bearer " + response.accessToken);
-                        const options = {
-                            method: method,
-                            headers: headers,
-                        };
-                        if (params) {
-                            options.headers.append('Content-Type', 'application/json')
-                            options.body = JSON.stringify(params);
-                        }
-                        console.log('request made to Graph API at: ' + new Date().toString());
-                        fetch(url, options)
-                            .then(function (response) {
-                                if (response.status != 204 && callback) {
-                                    response.json().then(function (json) {
-                                        callback(json)
-                                    })
-                                }
-                            }).catch(function (error) { document.querySelector(".log").innerHTML += "\n" + error + "\n" })
-                    })
-            }
-            onLogined = function () {
-                const currentAcc = myMSALObj.getAccountByHomeId(accountId);
-                if (!currentAcc) {
-                    //登陆
-                    return myMSALObj.loginRedirect(loginRequest).then(function () {
-                        return doCall(currentAcc);
-                    })
-                } else {
-                    return doCall(currentAcc)
-                }
-            }
-            if (!accountId) {
-                myMSALObj.loginRedirect(loginRequest).then(function () {
-                    onLogined();
-                })
-            }
-            onLogined()
-
-        }
-
+        const tasksRestUrl = "/me";
         // visibility filters
         var filters = {
             all: function (todos) {
@@ -185,8 +96,6 @@
             }
         };
 
-
-        // app Vue instance
         var app = new Vue({
             // app initial state
             data: {
@@ -226,6 +135,25 @@
                     call("PATCH", tasksRestUrl + "/" + todo.id, {
                         status: todo.completed ? "completed" : "notStarted"
                     })
+                },
+                call: function (method, url, params, callback) {
+
+                    const options = {
+                        method: method
+                    };
+                    if (params) {
+                        options.headers.append('Content-Type', 'application/json')
+                        options.body = JSON.stringify(params);
+                    }
+                    console.log('request made to Graph API at: ' + new Date().toString());
+                    fetch(url, options)
+                        .then(function (response) {
+                            if (response.status != 204 && callback) {
+                                response.json().then(function (json) {
+                                    callback(json)
+                                })
+                            }
+                        }).catch(function (error) { document.querySelector(".log").innerHTML += "<br/>" + error + "\n" })
                 },
                 updateTime: function () {
                     var date = new Date()
@@ -300,7 +228,6 @@
 
         // mount
         app.$mount("#app");
-        // app.$mount(".todoapp")
     } catch (e) {
         document.querySelector(".log").innerHTML += e
     }
@@ -536,6 +463,7 @@
     .filters li a {
         color: inherit;
         margin: 3px;
+        font-size: 30px;
         padding: 3px 7px;
         text-decoration: none;
         border: 1px solid transparent;
