@@ -2,9 +2,12 @@ import { Router } from 'itty-router'
 import * as client from './fetchProxy'
 import * as msal from '@azure/msal-node'
 import { v4 as uuid } from "uuid"
+import "yet-another-abortcontroller-polyfill"
+const Pusher = require("pusher")
 
 const CookiesName = "_todo";
 const HOST = "https://todo.mscdn.cf";
+// const HOST = "http://localhost:3000";
 const REDIRECT_URI = HOST + "/redirect";
 const pca = new msal.ConfidentialClientApplication({
   auth: {
@@ -15,6 +18,13 @@ const pca = new msal.ConfidentialClientApplication({
   system: {
     networkClient: client
   }
+});
+const pusher = new Pusher({
+  appId: "1163927",
+  key: "88a622c1a678a56ee642",
+  secret: "5516211c4fa83ce6eb3f",
+  cluster: "ap1",
+  useTLS: true
 });
 
 function getCookie(request, name) {
@@ -36,12 +46,40 @@ function getCookie(request, name) {
 // Create a new router
 const router = Router()
 
+function getHeader(accessToken) {
+  var headers = new Headers()
+  headers.set("Authorization", "Bearer " + accessToken);
+  headers.set("Content-Type", "application/json");
+  return headers
+}
+
 router.get("/", async (req) => {
   //获取cookies,看是否登陆
-  if (getCookie(req, CookiesName)) {
-    // return fetch("https://todo.mscdn.cf")
+  let accessToken = getCookie(req, CookiesName)
+  if (accessToken) {
+    // 订阅更新,获取默认tasks的id,供订阅使用
+    var taskInfo = await (await fetch("https://graph.microsoft.com/v1.0/me/todo/lists/tasks", {
+      method: "GET",
+      headers: getHeader(accessToken)
+    })).json()
+    var sub = await fetch("https://graph.microsoft.com/v1.0/subscriptions", {
+      method: "POST",
+      headers: getHeader(accessToken),
+      body: JSON.stringify({
+        "resource": `/me/todo/lists/${taskInfo.id}/tasks`,
+        "expirationDateTime": new Date((new Date()).valueOf() + 1000 * 60 * 60 * 24).toISOString(),
+        "notificationUrl": HOST + "/sub",
+        // "notificationUrl": "https://todo.cn.utools.club/sub",
+        "changeType": "created,updated,deleted",
+        "clientState": "todo_list"
+      })
+    })
+
+    var subResult = await sub.json()
+    console.log("sub response:", sub.status, JSON.stringify(subResult))
     var res = await fetch("https://cdn.jsdelivr.net/gh/qinyongliang/kindle_todo/index.html");
-    return new Response(await res.text(), {
+    // var res = await fetch("https://list.cn.utools.club/index.html");
+    return new Response(await (await res.text()).replaceAll("MY_TODO_SUB_ID", subResult.id), {
       status: 200,
       headers: {
         'content-type': 'text/html; charset=utf-8'
@@ -49,8 +87,7 @@ router.get("/", async (req) => {
     })
   } else {
     const authCodeUrlParameters = {
-      scopes: ["openid", "profile", "User.Read", "Mail.Read", "Tasks.ReadWrite"],
-      // redirectUri: new URL(req.url).origin + "/redirect",
+      scopes: ["openid", "profile", "User.Read", "Tasks.ReadWrite"],
       redirectUri: REDIRECT_URI,
     };
     let codeUrl = await pca.getAuthCodeUrl(authCodeUrlParameters)
@@ -62,8 +99,7 @@ router.get("/redirect", async (req) => {
   try {
     let res = await pca.acquireTokenByCode({
       code: req.query.code,
-      scopes: ["openid", "profile", "User.Read", "Mail.Read", "Tasks.ReadWrite"],
-      // redirectUri: new URL(req.url).origin + "/redirect",
+      scopes: ["openid", "profile", "User.Read", "Tasks.ReadWrite"],
       redirectUri: REDIRECT_URI,
     })
     return new Response(null, {
@@ -79,6 +115,23 @@ router.get("/redirect", async (req) => {
   }
 })
 
+router.all("/sub", async (req) => {
+  console.log("收到订阅请求:", req.url)
+  var validationToken = new URL(req.url).searchParams.get("validationToken")
+  if (validationToken) {
+    console.log("验证订阅请求:" + validationToken)
+    return new Response(validationToken)
+  } else {
+    var sub = await req.json()
+    console.log("订阅更新:", JSON.stringify(sub))
+    for (const item of sub.value) {
+      pusher.trigger(item.subscriptionId, "event", {
+        message: "update"
+      });
+    }
+    return new Response("", { status: 202 })
+  }
+})
 
 router.all("/me/*", async (req) => {
   let accessToken = getCookie(req, CookiesName);

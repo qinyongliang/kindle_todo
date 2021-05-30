@@ -5,6 +5,7 @@
   "description": "package for creating workers templates",
   "main": "index.js",
   "scripts": {
+    "dev": "wrangler dev --port 3000",
     "test": "echo \"Error: no test specified\" && exit 1",
     "format": "prettier --write '**/*.{js,css,json,md}'"
   },
@@ -16,7 +17,9 @@
   "dependencies": {
     "@azure/msal-node": "^1.1.0",
     "itty-router": "^2.1.9",
+    "pusher": "^5.0.0",
     "serverless-cloudflare-workers": "^1.2.0",
-    "uuid": "^8.3.2"
+    "uuid": "^8.3.2",
+    "yet-another-abortcontroller-polyfill": "^0.0.4"
   }
 }

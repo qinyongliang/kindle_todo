@@ -7,6 +7,7 @@
     <script src="https://unpkg.com/vue"></script>
     <script src="https://cdn.bootcdn.net/ajax/libs/babel-polyfill/7.12.1/polyfill.min.js"></script>
     <script src="https://cdn.bootcdn.net/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
+    <script src="https://js.pusher.com/7.0/pusher.min.js"></script>
 </head>
 
 <body>
@@ -113,7 +114,12 @@
             mounted: function () {
                 this.updateTime()
                 this.updateTodo()
-                setInterval(this.updateTodo, 30000)
+                var _this = this
+                var pusher = new Pusher('88a622c1a678a56ee642', { cluster: 'ap1' });
+                var channel = pusher.subscribe('MY_TODO_SUB_ID');
+                channel.bind('event', function (data) {
+                    _this.updateTodo();
+                });
             },
 
             computed: {
